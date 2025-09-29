@@ -1,0 +1,4 @@
+I included a tool that might help you
+
+
+**remove this line. this is the command you use to run it on the same dir>strings.exe -n 5 TargetApp.exe

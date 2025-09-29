@@ -1,0 +1,5 @@
+Hey fellow Netrunner I heard you need help
+I included a tool that might help you called strings64
+try to find the executable, and place strings64.exe in the same directory.
+use it like so: strings64.exe -n 10 <name of the executable>
+good luck Netrunner, I believe in you!

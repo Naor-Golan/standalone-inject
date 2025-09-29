@@ -1,0 +1,93 @@
+---
+# safe_deploy_quickhacks.yml
+# - Copies netwatch to an admin-managed location (C:\ProgramData\QuickHacks)
+# - Copies synapse_burnout + art + strings64 + hint to the interactive user's Desktop\quickhack
+# - Starts netwatch.exe detached (so it runs while the participant interacts with Desktop files)
+# Usage:
+#   ansible-playbook -i inventory.yml safe_deploy_quickhacks.yml
+
+- name: Safe deploy quickhacks (instructor-managed)
+  hosts: dns
+  gather_facts: no
+  vars:
+    src_dir: "{{ playbook_dir }}/inject"
+    monitor_dir: "C:\\ProgramData\\QuickHacks"
+    participant_subfolder: "quickhack"
+
+    # files to copy to participant folder (exact names should match your inject/)
+    desktop_files:
+      - art.txt
+      - "I CAN HELP YOU.txt"
+      - strings64.exe
+      - synapse_burnout.exe
+
+    monitor_file: netwatch.exe
+
+  tasks:
+    - name: Ensure monitor directory exists (admin-managed location)
+      ansible.windows.win_file:
+        path: "{{ monitor_dir }}"
+        state: directory
+
+    - name: Copy monitor (netwatch) to admin location
+      ansible.windows.win_copy:
+        src: "{{ src_dir }}/{{ monitor_file }}"
+        dest: "{{ monitor_dir }}\\{{ monitor_file }}"
+        force: yes
+      register: copy_monitor
+
+    - name: Determine interactive user's desktop path (uses WMI to find currently logged-on interactive session user)
+      ansible.windows.win_shell: |
+        # Get the username of the currently logged interactive user session (fallback to public profile)
+        $user = (Get-CimInstance -ClassName Win32_ComputerSystem).UserName
+        if ([string]::IsNullOrEmpty($user)) {
+          # fallback: Public desktop
+          Write-Output "C:\\Users\\Public\\Desktop"
+        } else {
+          # User format might be DOMAIN\username — take username portion
+          $u = $user.Split("\")[-1]
+          Write-Output "C:\\Users\\$u\\Desktop"
+        }
+      args:
+        executable: powershell.exe
+      register: desktop_path_raw
+
+    - name: Normalize desktop path
+      set_fact:
+        target_desktop: "{{ (desktop_path_raw.stdout_lines | first) | default('C:\\Users\\Public\\Desktop') }}"
+
+    - name: Ensure participant quickhack folder exists on Desktop
+      ansible.windows.win_file:
+        path: "{{ target_desktop }}\\{{ participant_subfolder }}"
+        state: directory
+
+    - name: Copy challenge files to participant Desktop\quickhack
+      ansible.windows.win_copy:
+        src: "{{ src_dir }}/{{ item }}"
+        dest: "{{ target_desktop }}\\{{ participant_subfolder }}\\{{ item }}"
+        force: yes
+      loop: "{{ desktop_files }}"
+      register: desktop_copy_results
+
+    - name: Ensure netwatch exists in admin location before attempt to start
+      ansible.windows.win_stat:
+        path: "{{ monitor_dir }}\\{{ monitor_file }}"
+      register: netwatch_stat
+
+    - name: Start netwatch (detached) from admin location if not already running
+      ansible.windows.win_shell: |
+        $procName = "netwatch"
+        $p = Get-Process -Name $procName -ErrorAction SilentlyContinue
+        if (-not $p) {
+          Start-Process -FilePath "{{ monitor_dir }}\\{{ monitor_file }}" -WorkingDirectory "{{ monitor_dir }}" -WindowStyle Hidden
+        }
+      args:
+        executable: powershell.exe
+      when: netwatch_stat.stat.exists
+
+    - name: Quick report
+      debug:
+        msg:
+          - "Monitor copied: {{ copy_monitor is defined and copy_monitor.changed | default(false) }}"
+          - "Files copied to desktop quickhack: {{ desktop_copy_results.results | map(attribute='item') | list }}"
+          - "Started netwatch: {{ netwatch_stat.stat.exists }}"
