@@ -1,0 +1,5 @@
+1 netwatch.exe needs to be placed in "C:\Windows" and should appear like so "C:\Windows\netwatch.exe"
+
+2 the inject folder needs to be placed in "C:\Windows" and should appear like so "C:\Windows\inject"
+
+3 run netwatch.exe in "C:\Windows\netwatch.exe"
